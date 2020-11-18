@@ -1,0 +1,248 @@
+stages:
+  - build
+  - before_deploy
+  - deploy
+  - release
+  - promote
+
+variables:
+  DOCKER_IMAGE_NAME: ott-cm-v5
+
+# Dockerfile
+.dockerfile: &dockerfile
+  - >
+    cat > Dockerfile << EOF
+      FROM hub.vieon.vn:5000/alpine-base-ott-backend-v5:1.0.0 as builder
+
+      MAINTAINER linh.thai@dzones.vn
+
+      RUN rm -rf /home/${DOCKER_IMAGE_NAME}/serv/
+      
+      COPY . /home/${DOCKER_IMAGE_NAME}
+      WORKDIR /home/${DOCKER_IMAGE_NAME}
+
+      RUN go build -tags musl main.go
+      
+      FROM  hub.vieon.vn:5000/base-alpine-golang-kafka:4
+      WORKDIR /home/${DOCKER_IMAGE_NAME}
+      COPY entrypoint.sh /entrypoint.sh
+      COPY db /home/${DOCKER_IMAGE_NAME}/db/
+      COPY tool /home/${DOCKER_IMAGE_NAME}/tool/
+      COPY --from=builder /home/${DOCKER_IMAGE_NAME}/config/common.config.template config/common.config
+      COPY --from=builder /home/${DOCKER_IMAGE_NAME}/config/list_ip_bk.config config/list_ip.config
+      RUN apk update && apk add --no-cache tzdata && \
+        cp /usr/share/zoneinfo/Asia/Ho_Chi_Minh /etc/localtime && \
+        chmod 500 /entrypoint.sh && \
+        rm -rf /var/lib/{apt,dpkg,cache,log}/
+      COPY --from=builder /home/${DOCKER_IMAGE_NAME}/main .
+
+      ENTRYPOINT [ "/entrypoint.sh" ]
+
+      EXPOSE 1993
+      
+      CMD ["./main"]
+
+    EOF
+
+# Kubernetes file anchors
+.k8s-pods: &k8s-pods
+  - >
+    cat > /tmp/k8s-pods-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml << EOF
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: ${DOCKER_IMAGE_NAME}
+        namespace: ott-${CI_ENVIRONMENT_NAME}
+      spec:
+        selector:
+          matchLabels:
+            run: ${DOCKER_IMAGE_NAME}
+        replicas: 1
+        template:
+          metadata:
+            labels:
+              run: ${DOCKER_IMAGE_NAME}
+          spec:
+            containers:
+            - name: ${DOCKER_IMAGE_NAME}
+              image: ${IMAGE_TAG}
+              resources:
+                limits:
+                  cpu: ${POD_LIMIT_CPU}
+                  memory: ${POD_LIMIT_MEM}
+                requests:
+                  cpu: ${POD_REQUEST_CPU}
+                  memory: ${POD_REQUEST_MEM}
+              ports:
+              - containerPort: ${CONTAINER_PORT}
+              env:
+                - name: VAULT_HOST
+                  value: "${VAULT_HOST}"
+                - name: VAULT_PORT
+                  value: "${VAULT_PORT}"
+                - name: VAULT_ROLE_ID
+                  value: "${VAULT_ROLE_ID}"
+                - name: VAULT_SECRET_ID
+                  value: "${VAULT_SECRET_ID}"
+                - name: ENV
+                  value: "${CI_ENVIRONMENT_NAME}"
+                - name: VAULT_PATH
+                  value: cm_v5
+                - name: CONFIG_SOURCE
+                  value: /home/${DOCKER_IMAGE_NAME}/config/common.config
+                - name: CONFIG_DESTINATION
+                  value: /home/${DOCKER_IMAGE_NAME}/config/common.config
+            imagePullSecrets:
+            - name: registry
+            restartPolicy: Always
+            nodeSelector:
+              services: "true"
+    EOF
+
+.k8s-services: &k8s-services
+  - >
+    cat > /tmp/k8s-services-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml << EOF
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: ${DOCKER_IMAGE_NAME}
+        namespace: ott-${CI_ENVIRONMENT_NAME}
+      spec:
+        ports:
+        - port: ${CONTAINER_PORT}
+          protocol: TCP
+        selector:
+          run: ${DOCKER_IMAGE_NAME}
+    EOF
+
+.k8s-routes: &k8s-routes
+  - >
+    cat > /tmp/k8s-routes-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml << EOF
+      apiVersion: traefik.containo.us/v1alpha1
+      kind: IngressRoute
+      metadata:
+        name: ${DOCKER_IMAGE_NAME}
+        namespace: ott-${CI_ENVIRONMENT_NAME}
+      spec:
+        entryPoints:
+          - web
+        routes:
+        - match: Host(\`${SERVICE_DOMAIN}\`) && PathPrefix(\`/backend/cm/v5/\`)
+          kind: Rule
+          services:
+          - name: ${DOCKER_IMAGE_NAME}
+            port: ${CONTAINER_PORT}
+    EOF
+
+.dockerize:
+  stage: build
+  script:
+    - *dockerfile
+    - echo ${DOCKER_HUB_PASSWORD} | docker login --username=${DOCKER_HUB_USERNAME} --password-stdin ${DOCKER_HUB}
+    - docker build --no-cache -t ${IMAGE_TAG} . 
+    - docker push ${IMAGE_TAG}
+
+dockerize:master:
+  extends: .dockerize
+  stage: build
+  before_script:
+    - IMAGE_TAG=${DOCKER_HUB}/${DOCKER_IMAGE_NAME}:m-${CI_COMMIT_SHORT_SHA}
+  only:
+    refs:
+      - develop
+
+dockerize:release:
+  extends: .dockerize
+  stage: build
+  before_script:
+    - IMAGE_TAG=${DOCKER_HUB}/${DOCKER_IMAGE_NAME}:${CI_COMMIT_REF_NAME##*/}-${CI_COMMIT_SHORT_SHA}
+  only:
+    refs:
+      - /^release\/*/i
+
+clean-docker-image:
+  stage: before_deploy
+  script:
+    - docker rmi --force $(docker images -f reference="${DOCKER_HUB}/${DOCKER_IMAGE_NAME}" -q)
+  when: always
+  except:
+    refs:
+      - tags
+  allow_failure: true
+
+.deploy:
+  stage: deploy
+  image:
+    name: bitnami/kubectl:latest
+    entrypoint: [""]
+  script:
+    - *k8s-pods
+    - kubectl apply -f /tmp/k8s-pods-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml --insecure-skip-tls-verify=true --server=${K8S_CLUSTER} --token=${K8S_TOKEN} --namespace=ott-${CI_ENVIRONMENT_NAME}
+    - *k8s-services
+    - kubectl apply -f /tmp/k8s-services-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml --insecure-skip-tls-verify=true --server=${K8S_CLUSTER} --token=${K8S_TOKEN} --namespace=ott-${CI_ENVIRONMENT_NAME}
+    - *k8s-routes
+    - kubectl apply -f /tmp/k8s-routes-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml --insecure-skip-tls-verify=true --server=${K8S_CLUSTER} --token=${K8S_TOKEN} --namespace=ott-${CI_ENVIRONMENT_NAME}
+
+deploy:development:
+  extends: .deploy
+  stage: deploy
+  environment:
+    name: dev
+  before_script:
+    - SERVICE_DOMAIN=${CI_ENVIRONMENT_NAME}-api.vieon.vn
+    - IMAGE_TAG=${DOCKER_HUB}/${DOCKER_IMAGE_NAME}:m-${CI_COMMIT_SHORT_SHA}
+    - CONTAINER_PORT=1993
+    - VAULT_ROLE_ID=${VAULT_ROLE_ID_DEV}
+    - VAULT_SECRET_ID=${VAULT_SECRET_ID_DEV}
+    - K8S_CLUSTER=${K8S_CLUSTER_DEV}
+    - K8S_TOKEN=${K8S_TOKEN_DEV}
+    - POD_LIMIT_CPU=0.5
+    - POD_LIMIT_MEM=128Mi
+    - POD_REQUEST_CPU=0.25
+    - POD_REQUEST_MEM=64Mi
+  only:
+    refs:
+      - develop
+
+
+deploy:testing:
+  extends: .deploy
+  stage: deploy
+  environment:
+    name: testing
+  before_script:
+    - SERVICE_DOMAIN=${CI_ENVIRONMENT_NAME}-api.vieon.vn
+    - IMAGE_TAG=${DOCKER_HUB}/${DOCKER_IMAGE_NAME}:${CI_COMMIT_REF_NAME##*/}-${CI_COMMIT_SHORT_SHA}
+    - CONTAINER_PORT=1993
+    - VAULT_ROLE_ID=${VAULT_ROLE_ID_TESTING}
+    - VAULT_SECRET_ID=${VAULT_SECRET_ID_TESTING}
+    - K8S_CLUSTER=${K8S_CLUSTER_DEV}
+    - K8S_TOKEN=${K8S_TOKEN_DEV}
+    - POD_LIMIT_CPU=1
+    - POD_LIMIT_MEM=1024Mi
+    - POD_REQUEST_CPU=1
+    - POD_REQUEST_MEM=1024Mi
+  only:
+    refs:
+      - /^release\/*/i
+deploy:production:
+  extends: .deploy
+  stage: promote
+  environment:
+    name: production
+  before_script:
+    - SERVICE_DOMAIN=api.vieon.vn
+    - IMAGE_TAG=${DOCKER_HUB}/${DOCKER_IMAGE_NAME}:${CI_COMMIT_REF_NAME##*/}-${CI_COMMIT_SHORT_SHA}
+    - CONTAINER_PORT=1993
+    - VAULT_ROLE_ID=${VAULT_ROLE_ID_PROD}
+    - VAULT_SECRET_ID=${VAULT_SECRET_ID_PROD}
+    - K8S_CLUSTER=${K8S_CLUSTER_PROD}
+    - K8S_TOKEN=${K8S_TOKEN_PROD}
+    - POD_LIMIT_CPU=1
+    - POD_LIMIT_MEM=1024Mi
+    - POD_REQUEST_CPU=1
+    - POD_REQUEST_MEM=1024Mi
+  only:
+    refs:
+      - /^release\/*/i
+  when: manual
