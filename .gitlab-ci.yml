@@ -199,7 +199,7 @@ variables:
 .deploy:
   stage: deploy
   image:
-    name: alpine/helm:latest
+    name: thorstenhans/helm:latest
     entrypoint: [""]
   script:
     - mkdir -p /tmp/cmv5/templates
