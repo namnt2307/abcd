@@ -204,7 +204,7 @@ variables:
   script:
     - mkdir -p /tmp/cmv5/templates
     - *chart
-    - cat /tmp/cmv5/
+    - cat /tmp/cmv5/Chart.yaml
     - *helm-pods
     - *helm-services
     - *helm-routes
