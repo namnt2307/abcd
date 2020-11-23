@@ -207,7 +207,7 @@ clean-docker-image:
     - *helm-services
     - *helm-routes
     - helm search repo
-    - helm upgrade --install /tmp/cmv5 --insecure-skip-tls-verify=true --kube-apiserver=${K8S_CLUSTER} --kube-token=${K8S_TOKEN} namespace=ott-${CI_ENVIRONMENT_NAME}
+    - helm upgrade --install ${DOCKER_IMAGE_NAME} /tmp/cmv5 --insecure-skip-tls-verify=true --kube-apiserver=${K8S_CLUSTER} --kube-token=${K8S_TOKEN} namespace=ott-${CI_ENVIRONMENT_NAME}
 
 
 deploy:development:
