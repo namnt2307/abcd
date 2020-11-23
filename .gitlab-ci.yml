@@ -158,42 +158,42 @@ variables:
             port: ${CONTAINER_PORT}
     EOF
 
-.dockerize:
-  stage: build
-  script:
-    - *dockerfile
-    - echo ${DOCKER_HUB_PASSWORD} | docker login --username=${DOCKER_HUB_USERNAME} --password-stdin ${DOCKER_HUB}
-    - docker build --no-cache -t ${IMAGE_TAG} . 
-    - docker push ${IMAGE_TAG}
+# .dockerize:
+#   stage: build
+#   script:
+#     - *dockerfile
+#     - echo ${DOCKER_HUB_PASSWORD} | docker login --username=${DOCKER_HUB_USERNAME} --password-stdin ${DOCKER_HUB}
+#     - docker build --no-cache -t ${IMAGE_TAG} . 
+#     - docker push ${IMAGE_TAG}
 
-dockerize:master:
-  extends: .dockerize
-  stage: build
-  before_script:
-    - IMAGE_TAG=${DOCKER_HUB}/${DOCKER_IMAGE_NAME}:m-${CI_COMMIT_SHORT_SHA}
-  only:
-    refs:
-      - develop
-      - master
+# dockerize:master:
+#   extends: .dockerize
+#   stage: build
+#   before_script:
+#     - IMAGE_TAG=${DOCKER_HUB}/${DOCKER_IMAGE_NAME}:m-${CI_COMMIT_SHORT_SHA}
+#   only:
+#     refs:
+#       - develop
+#       - master
 
-dockerize:release:
-  extends: .dockerize
-  stage: build
-  before_script:
-    - IMAGE_TAG=${DOCKER_HUB}/${DOCKER_IMAGE_NAME}:${CI_COMMIT_REF_NAME##*/}-${CI_COMMIT_SHORT_SHA}
-  only:
-    refs:
-      - /^release\/*/i
+# dockerize:release:
+#   extends: .dockerize
+#   stage: build
+#   before_script:
+#     - IMAGE_TAG=${DOCKER_HUB}/${DOCKER_IMAGE_NAME}:${CI_COMMIT_REF_NAME##*/}-${CI_COMMIT_SHORT_SHA}
+#   only:
+#     refs:
+#       - /^release\/*/i
 
-clean-docker-image:
-  stage: before_deploy
-  script:
-    - docker rmi --force $(docker images -f reference="${DOCKER_HUB}/${DOCKER_IMAGE_NAME}" -q)
-  when: always
-  except:
-    refs:
-      - tags
-  allow_failure: true
+# clean-docker-image:
+#   stage: before_deploy
+#   script:
+#     - docker rmi --force $(docker images -f reference="${DOCKER_HUB}/${DOCKER_IMAGE_NAME}" -q)
+#   when: always
+#   except:
+#     refs:
+#       - tags
+#   allow_failure: true
 
 
 .deploy:
