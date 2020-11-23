@@ -199,7 +199,7 @@ variables:
 .deploy:
   stage: deploy
   image:
-    name: thorstenhans/helm:latest
+    name: thorstenhans/helm3
     entrypoint: [""]
   script:
     - mkdir -p /tmp/cmv5/templates
