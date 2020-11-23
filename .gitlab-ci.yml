@@ -7,7 +7,17 @@ stages:
 
 variables:
   DOCKER_IMAGE_NAME: ott-cm-v5
-
+#kustomize
+.kustomie: &kustomize
+  - >
+    cat > /tmp/kustomize/kustomization.yaml << EOF
+      apiVersion: kustomize.config.k8s.io/v1beta1
+      kind: Kustomization
+      resources:
+      - /tmp/kustomize/k8s-pods-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml
+      - /tmp/kustomize/k8s-services-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml
+      - /tmp/kustomize/k8s-routes-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml
+    EOF 
 # Dockerfile
 .dockerfile: &dockerfile
   - >
@@ -47,24 +57,24 @@ variables:
 # Kubernetes file anchors
 .k8s-pods: &k8s-pods
   - >
-    cat > /tmp/k8s-pods-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml << EOF
+    cat > /tmp/kustomize/k8s-pods-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml << EOF
       apiVersion: apps/v1
       kind: Deployment
       metadata:
-        name: ${DOCKER_IMAGE_NAME}
+        name: ${DOCKER_IMAGE_NAME}-k
         namespace: ott-${CI_ENVIRONMENT_NAME}
       spec:
         selector:
           matchLabels:
-            run: ${DOCKER_IMAGE_NAME}
+            run: ${DOCKER_IMAGE_NAME}-k
         replicas: 1
         template:
           metadata:
             labels:
-              run: ${DOCKER_IMAGE_NAME}
+              run: ${DOCKER_IMAGE_NAME}-k
           spec:
             containers:
-            - name: ${DOCKER_IMAGE_NAME}
+            - name: ${DOCKER_IMAGE_NAME}-k
               image: ${IMAGE_TAG}
               resources:
                 limits:
@@ -101,36 +111,36 @@ variables:
 
 .k8s-services: &k8s-services
   - >
-    cat > /tmp/k8s-services-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml << EOF
+    cat > /tmp/kustomize/k8s-services-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml << EOF
       apiVersion: v1
       kind: Service
       metadata:
-        name: ${DOCKER_IMAGE_NAME}
+        name: ${DOCKER_IMAGE_NAME}-k
         namespace: ott-${CI_ENVIRONMENT_NAME}
       spec:
         ports:
         - port: ${CONTAINER_PORT}
           protocol: TCP
         selector:
-          run: ${DOCKER_IMAGE_NAME}
+          run: ${DOCKER_IMAGE_NAME}-k
     EOF
 
 .k8s-routes: &k8s-routes
   - >
-    cat > /tmp/k8s-routes-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml << EOF
+    cat > /tmp/kustomize/k8s-routes-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml << EOF
       apiVersion: traefik.containo.us/v1alpha1
       kind: IngressRoute
       metadata:
-        name: ${DOCKER_IMAGE_NAME}
+        name: ${DOCKER_IMAGE_NAME}-k
         namespace: ott-${CI_ENVIRONMENT_NAME}
       spec:
         entryPoints:
           - web
         routes:
-        - match: Host(\`${SERVICE_DOMAIN}\`) && PathPrefix(\`/backend/cm/v5/\`)
+        - match: Host(\`${SERVICE_DOMAIN}\`) && PathPrefix(\`/backend/cm/v55/\`)
           kind: Rule
           services:
-          - name: ${DOCKER_IMAGE_NAME}
+          - name: ${DOCKER_IMAGE_NAME}-k
             port: ${CONTAINER_PORT}
     EOF
 
@@ -146,7 +156,7 @@ dockerize:master:
   extends: .dockerize
   stage: build
   before_script:
-    - IMAGE_TAG=${DOCKER_HUB}/${DOCKER_IMAGE_NAME}:m-${CI_COMMIT_SHORT_SHA}
+    - IMAGE_TAG=${DOCKER_HUB}/${DOCKER_IMAGE_NAME}:m-${CI_COMMIT_SHORT_SHA}-k
   only:
     refs:
       - develop
@@ -176,12 +186,12 @@ clean-docker-image:
     name: bitnami/kubectl:latest
     entrypoint: [""]
   script:
+    - mkdir -p /tmp/kustomize
     - *k8s-pods
-    - kubectl apply -f /tmp/k8s-pods-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml --insecure-skip-tls-verify=true --server=${K8S_CLUSTER} --token=${K8S_TOKEN} --namespace=ott-${CI_ENVIRONMENT_NAME}
     - *k8s-services
-    - kubectl apply -f /tmp/k8s-services-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml --insecure-skip-tls-verify=true --server=${K8S_CLUSTER} --token=${K8S_TOKEN} --namespace=ott-${CI_ENVIRONMENT_NAME}
     - *k8s-routes
-    - kubectl apply -f /tmp/k8s-routes-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml --insecure-skip-tls-verify=true --server=${K8S_CLUSTER} --token=${K8S_TOKEN} --namespace=ott-${CI_ENVIRONMENT_NAME}
+    - *kustomize
+    - kubectl apply -k /tmp/kustomize/ --insecure-skip-tls-verify=true --server=${K8S_CLUSTER} --token=${K8S_TOKEN} --namespace=ott-${CI_ENVIRONMENT_NAME}
 
 deploy:development:
   extends: .deploy
@@ -190,7 +200,7 @@ deploy:development:
     name: dev
   before_script:
     - SERVICE_DOMAIN=${CI_ENVIRONMENT_NAME}-api.vieon.vn
-    - IMAGE_TAG=${DOCKER_HUB}/${DOCKER_IMAGE_NAME}:m-${CI_COMMIT_SHORT_SHA}
+    - IMAGE_TAG=${DOCKER_HUB}/${DOCKER_IMAGE_NAME}:m-${CI_COMMIT_SHORT_SHA}-k
     - CONTAINER_PORT=1993
     - VAULT_ROLE_ID=${VAULT_ROLE_ID_DEV}
     - VAULT_SECRET_ID=${VAULT_SECRET_ID_DEV}
@@ -203,46 +213,4 @@ deploy:development:
   only:
     refs:
       - develop
-
-
-deploy:testing:
-  extends: .deploy
-  stage: deploy
-  environment:
-    name: testing
-  before_script:
-    - SERVICE_DOMAIN=${CI_ENVIRONMENT_NAME}-api.vieon.vn
-    - IMAGE_TAG=${DOCKER_HUB}/${DOCKER_IMAGE_NAME}:${CI_COMMIT_REF_NAME##*/}-${CI_COMMIT_SHORT_SHA}
-    - CONTAINER_PORT=1993
-    - VAULT_ROLE_ID=${VAULT_ROLE_ID_TESTING}
-    - VAULT_SECRET_ID=${VAULT_SECRET_ID_TESTING}
-    - K8S_CLUSTER=${K8S_CLUSTER_DEV}
-    - K8S_TOKEN=${K8S_TOKEN_DEV}
-    - POD_LIMIT_CPU=1
-    - POD_LIMIT_MEM=1024Mi
-    - POD_REQUEST_CPU=1
-    - POD_REQUEST_MEM=1024Mi
-  only:
-    refs:
-      - /^release\/*/i
-deploy:production:
-  extends: .deploy
-  stage: promote
-  environment:
-    name: production
-  before_script:
-    - SERVICE_DOMAIN=api.vieon.vn
-    - IMAGE_TAG=${DOCKER_HUB}/${DOCKER_IMAGE_NAME}:${CI_COMMIT_REF_NAME##*/}-${CI_COMMIT_SHORT_SHA}
-    - CONTAINER_PORT=1993
-    - VAULT_ROLE_ID=${VAULT_ROLE_ID_PROD}
-    - VAULT_SECRET_ID=${VAULT_SECRET_ID_PROD}
-    - K8S_CLUSTER=${K8S_CLUSTER_PROD}
-    - K8S_TOKEN=${K8S_TOKEN_PROD}
-    - POD_LIMIT_CPU=1
-    - POD_LIMIT_MEM=1024Mi
-    - POD_REQUEST_CPU=1
-    - POD_REQUEST_MEM=1024Mi
-  only:
-    refs:
-      - /^release\/*/i
-  when: manual
+      - master
