@@ -7,17 +7,31 @@ stages:
 
 variables:
   DOCKER_IMAGE_NAME: ott-cm-v5
-#kustomize
-.kustomie: &kustomize
+#chart
+.chart: &chart
   - >
-    cat > /tmp/kustomize/kustomization.yaml << EOF
-      apiVersion: kustomize.config.k8s.io/v1beta1
-      kind: Kustomization
-      resources:
-      - k8s-pods-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml
-      - k8s-services-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml
-      - k8s-routes-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml
+    cat > /tmp/cmv5/Chart.yaml << EOF
+      apiVersion: v2
+      name: {DOCKER_IMAGE_NAME}-chart
+      description: Helm for ott-cmv5
+      type: application
+      version: 0.1.0
+      appVersion: 1.16.0
+    
     EOF 
+.values: &values
+  - >
+    cat > /tmp/cmv5/values.yaml << EOF
+      POD:
+        LCPU: 0.5
+        LMEM: 128Mi
+        RCPU: 0.25
+        RMEM: 64Mi
+    EOF
+    
+        
+        
+      
 # Dockerfile
 .dockerfile: &dockerfile
   - >
@@ -55,34 +69,34 @@ variables:
     EOF
 
 # Kubernetes file anchors
-.k8s-pods: &k8s-pods
+.helm-pods: &helm-pods
   - >
-    cat > /tmp/kustomize/k8s-pods-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml << EOF
+    cat > /tmp/cmv5/templates/k8s-pods-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml << EOF
       apiVersion: apps/v1
       kind: Deployment
       metadata:
-        name: ${DOCKER_IMAGE_NAME}-k
+        name: ${DOCKER_IMAGE_NAME}
         namespace: ott-${CI_ENVIRONMENT_NAME}
       spec:
         selector:
           matchLabels:
-            run: ${DOCKER_IMAGE_NAME}-k
+            run: ${DOCKER_IMAGE_NAME}
         replicas: 1
         template:
           metadata:
             labels:
-              run: ${DOCKER_IMAGE_NAME}-k
+              run: ${DOCKER_IMAGE_NAME}
           spec:
             containers:
-            - name: ${DOCKER_IMAGE_NAME}-k
+            - name: ${DOCKER_IMAGE_NAME}
               image: ${IMAGE_TAG}
               resources:
                 limits:
-                  cpu: ${POD_LIMIT_CPU}
-                  memory: ${POD_LIMIT_MEM}
+                  cpu: {{.Values.POD.LCPU}}
+                  memory: {{ .Values.POD.LMEM}}
                 requests:
-                  cpu: ${POD_REQUEST_CPU}
-                  memory: ${POD_REQUEST_MEM}
+                  cpu: {{.Values.POD.RCPU}}
+                  memory: {{.Values.POD.LMEM}}
               ports:
               - containerPort: ${CONTAINER_PORT}
               env:
@@ -109,29 +123,29 @@ variables:
               services: "true"
     EOF
 
-.k8s-services: &k8s-services
+.helm-services: &helm-services
   - >
-    cat > /tmp/kustomize/k8s-services-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml << EOF
+    cat > /tmp/cmv5/templates/k8s-services-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml << EOF
       apiVersion: v1
       kind: Service
       metadata:
-        name: ${DOCKER_IMAGE_NAME}-k
+        name: ${DOCKER_IMAGE_NAME}
         namespace: ott-${CI_ENVIRONMENT_NAME}
       spec:
         ports:
         - port: ${CONTAINER_PORT}
           protocol: TCP
         selector:
-          run: ${DOCKER_IMAGE_NAME}-k
+          run: ${DOCKER_IMAGE_NAME}
     EOF
 
-.k8s-routes: &k8s-routes
+.helm-routes: &helm-routes
   - >
-    cat > /tmp/kustomize/k8s-routes-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml << EOF
+    cat > /tmp/cmv5/templates/k8s-routes-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml << EOF
       apiVersion: traefik.containo.us/v1alpha1
       kind: IngressRoute
       metadata:
-        name: ${DOCKER_IMAGE_NAME}-k
+        name: ${DOCKER_IMAGE_NAME}
         namespace: ott-${CI_ENVIRONMENT_NAME}
       spec:
         entryPoints:
@@ -140,7 +154,7 @@ variables:
         - match: Host(\`${SERVICE_DOMAIN}\`) && PathPrefix(\`/backend/cm/v55/\`)
           kind: Rule
           services:
-          - name: ${DOCKER_IMAGE_NAME}-k
+          - name: ${DOCKER_IMAGE_NAME}
             port: ${CONTAINER_PORT}
     EOF
 
@@ -156,7 +170,7 @@ dockerize:master:
   extends: .dockerize
   stage: build
   before_script:
-    - IMAGE_TAG=${DOCKER_HUB}/${DOCKER_IMAGE_NAME}:m-${CI_COMMIT_SHORT_SHA}-k
+    - IMAGE_TAG=${DOCKER_HUB}/${DOCKER_IMAGE_NAME}:m-${CI_COMMIT_SHORT_SHA}
   only:
     refs:
       - develop
@@ -181,18 +195,19 @@ clean-docker-image:
       - tags
   allow_failure: true
 
+
 .deploy:
   stage: deploy
   image:
-    name: bitnami/kubectl:latest
+    name: alpine/helm:latest
     entrypoint: [""]
   script:
-    - mkdir -p /tmp/kustomize
-    - *k8s-pods
-    - *k8s-services
-    - *k8s-routes
-    - *kustomize
-    - kubectl apply -k /tmp/kustomize/ --insecure-skip-tls-verify=true --server=${K8S_CLUSTER} --token=${K8S_TOKEN} --namespace=ott-${CI_ENVIRONMENT_NAME}
+    - mkdir -p /tmp/cmv5/templates
+    - *helm-pods
+    - *helm-services
+    - *helm-routes
+    - helm upgrade --install /tmp/cmv5 --insecure-skip-tls-verify=true --kube-apiserver=${K8S_CLUSTER} --kube-token=${K8S_TOKEN} namespace=ott-${CI_ENVIRONMENT_NAME}
+
 
 deploy:development:
   extends: .deploy
@@ -201,16 +216,12 @@ deploy:development:
     name: dev
   before_script:
     - SERVICE_DOMAIN=${CI_ENVIRONMENT_NAME}-api.vieon.vn
-    - IMAGE_TAG=${DOCKER_HUB}/${DOCKER_IMAGE_NAME}:m-${CI_COMMIT_SHORT_SHA}-k
+    - IMAGE_TAG=${DOCKER_HUB}/${DOCKER_IMAGE_NAME}:m-${CI_COMMIT_SHORT_SHA}
     - CONTAINER_PORT=1993
     - VAULT_ROLE_ID=${VAULT_ROLE_ID_DEV}
     - VAULT_SECRET_ID=${VAULT_SECRET_ID_DEV}
     - K8S_CLUSTER=${K8S_CLUSTER_DEV}
     - K8S_TOKEN=${K8S_TOKEN_DEV}
-    - POD_LIMIT_CPU=0.5
-    - POD_LIMIT_MEM=128Mi
-    - POD_REQUEST_CPU=0.25
-    - POD_REQUEST_MEM=64Mi
   only:
     refs:
       - develop
