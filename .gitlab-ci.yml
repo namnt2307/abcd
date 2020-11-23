@@ -12,7 +12,7 @@ variables:
   - >
     cat > /tmp/cmv5/Chart.yaml << EOF
       apiVersion: v2
-      name: {DOCKER_IMAGE_NAME}-chart
+      name: cmv5
       description: Helm for ott-cmv5
       type: application
       version: 0.1.0
@@ -203,11 +203,12 @@ variables:
     entrypoint: [""]
   script:
     - mkdir -p /tmp/cmv5/templates
+    - *chart
+    - cat /tmp/cmv5/
     - *helm-pods
     - *helm-services
     - *helm-routes
     - *values
-    - *chart
     - helm install ${DOCKER_IMAGE_NAME}_chart /tmp/cmv5/ --insecure-skip-tls-verify=true --kube-apiserver=${K8S_CLUSTER} --kube-token=${K8S_TOKEN} --namespace=ott-${CI_ENVIRONMENT_NAME}
 
 
