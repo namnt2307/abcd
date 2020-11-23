@@ -14,9 +14,9 @@ variables:
       apiVersion: kustomize.config.k8s.io/v1beta1
       kind: Kustomization
       resources:
-      - /tmp/kustomize/k8s-pods-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml
-      - /tmp/kustomize/k8s-services-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml
-      - /tmp/kustomize/k8s-routes-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml
+      - k8s-pods-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml
+      - k8s-services-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml
+      - k8s-routes-${CI_ENVIRONMENT_NAME}-${DOCKER_IMAGE_NAME}.yaml
     EOF 
 # Dockerfile
 .dockerfile: &dockerfile
@@ -160,6 +160,7 @@ dockerize:master:
   only:
     refs:
       - develop
+      - master
 
 dockerize:release:
   extends: .dockerize
