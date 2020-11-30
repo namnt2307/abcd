@@ -210,7 +210,7 @@ variables:
     - *helm-routes
     - *values
     - kubectl config set-credentials dev-token-rnxqz --token=${K8S_TOKEN}
-    - helm install ${DOCKER_IMAGE_NAME}_chart /tmp/cmv5/  --kube-apiserver=${K8S_CLUSTER} --namespace=ott-${CI_ENVIRONMENT_NAME} --insecure-skip-tls-verify=true
+    - helm install ${DOCKER_IMAGE_NAME}_chart /tmp/cmv5/ --namespace=ott-${CI_ENVIRONMENT_NAME} --insecure-skip-tls-verify=true
 
 
 deploy:development:
