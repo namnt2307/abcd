@@ -46,4 +46,4 @@ spec:
       - name: registry
       restartPolicy: Always
       nodeSelector:
-        services: "true
+        services: "true"
