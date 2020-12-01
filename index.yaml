@@ -3,9 +3,9 @@ entries:
   cmv5:
   - apiVersion: v2
     appVersion: 1.16.0
-    created: "2020-12-01T15:20:25.909984518+07:00"
+    created: "2020-12-01T15:23:06.835058855+07:00"
     description: Helm for ott-cmv5
-    digest: 38489fb0b5a75c4f06e0c737deccd188148d6d203546c6310d73d676b6bf0a37
+    digest: 456cbfa259e2d1ce85bdb6dcb0d4c18e50151126674a16500c21e1ba139dcbc7
     name: cmv5
     type: application
     urls:
@@ -51,4 +51,4 @@ entries:
     urls:
     - https://xizibin.github.io/abcd/cmv5-0.1.0.tgz
     version: 0.1.0
-generated: "2020-12-01T15:20:25.908488172+07:00"
+generated: "2020-12-01T15:23:06.834503839+07:00"
