@@ -1,0 +1,14 @@
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ${DOCKER_IMAGE_NAME}
+  namespace: ott-${CI_ENVIRONMENT_NAME}
+spec:
+  entryPoints:
+    - web
+  routes:
+  - match: Host(\`${SERVICE_DOMAIN}\`) && PathPrefix(\`/backend/cm/v55/\`)
+    kind: Rule
+    services:
+    - name: ${DOCKER_IMAGE_NAME}
+      port: ${CONTAINER_PORT}

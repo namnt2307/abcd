@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${DOCKER_IMAGE_NAME}
+  namespace: ott-${CI_ENVIRONMENT_NAME}
+spec:
+  selector:
+    matchLabels:
+      run: ${DOCKER_IMAGE_NAME}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        run: ${DOCKER_IMAGE_NAME}
+    spec:
+      containers:
+      - name: ${DOCKER_IMAGE_NAME}
+        image: ${IMAGE_TAG}
+        resources:
+          limits:
+            cpu: {{.Values.POD.LCPU}}
+            memory: {{ .Values.POD.LMEM}}
+          requests:
+            cpu: {{.Values.POD.RCPU}}
+            memory: {{.Values.POD.LMEM}}
+        ports:
+        - containerPort: ${CONTAINER_PORT}
+        env:
+          - name: VAULT_HOST
+            value: "${VAULT_HOST}"
+          - name: VAULT_PORT
+            value: "${VAULT_PORT}"
+          - name: VAULT_ROLE_ID
+            value: "${VAULT_ROLE_ID}"
+          - name: VAULT_SECRET_ID
+            value: "${VAULT_SECRET_ID}"
+          - name: ENV
+            value: "${CI_ENVIRONMENT_NAME}"
+          - name: VAULT_PATH
+            value: cm_v5
+          - name: CONFIG_SOURCE
+            value: /home/${DOCKER_IMAGE_NAME}/config/common.config
+          - name: CONFIG_DESTINATION
+            value: /home/${DOCKER_IMAGE_NAME}/config/common.config
+      imagePullSecrets:
+      - name: registry
+      restartPolicy: Always
+      nodeSelector:
+        services: "true
