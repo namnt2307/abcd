@@ -1,13 +1,13 @@
 apiVersion: traefik.containo.us/v1alpha1
 kind: IngressRoute
 metadata:
-  name: {{.Values.DOCKER_IMAGE_NAME}}}
+  name: {{.Values.DOCKER_IMAGE_NAME}}
   namespace: ott-{{.Values.CI_ENVIRONMENT_NAME}}-h
 spec:
   entryPoints:
     - web
   routes:
-  - match: Host(\`{{.Values.SERVICE_DOMAIN}}\`) && PathPrefix(\`/backend/cm/v55/\`)
+  - match: Host(\`{{ .Values.SERVICE_DOMAIN }}\`) && PathPrefix(\`/backend/cm/v55/\`)
     kind: Rule
     services:
     - name: {{.Values.DOCKER_IMAGE_NAME}}
