@@ -1,47 +1,47 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ${DOCKER_IMAGE_NAME}
-  namespace: ott-${CI_ENVIRONMENT_NAME}
+  name: {{ .Values.DOCKER_IMAGE_NAME}}
+  namespace: ott-{{ .Values.CI_ENVIRONMENT_NAME }}
 spec:
   selector:
     matchLabels:
-      run: ${DOCKER_IMAGE_NAME}
+      run: {{ .Values.DOCKER_IMAGE_NAME}}
   replicas: 1
   template:
     metadata:
       labels:
-        run: ${DOCKER_IMAGE_NAME}
+        run: {{ .Values.DOCKER_IMAGE_NAME }}
     spec:
       containers:
-      - name: ${DOCKER_IMAGE_NAME}
-        image: ${IMAGE_TAG}
+      - name: {{ .Values.DOCKER_IMAGE_NAME }}
+        image: {{ .Values.IMAGE_TAG }}
         resources:
           limits:
-            cpu: {{.Values.POD.LCPU}}
-            memory: {{ .Values.POD.LMEM}}
+            cpu: {{.Values.POD_LIMIT_CPU}}
+            memory: {{ .Values.POD_LIMIT_MEM }}
           requests:
-            cpu: {{.Values.POD.RCPU}}
-            memory: {{.Values.POD.LMEM}}
+            cpu: {{.Values.POD_REQUEST_CPU}}
+            memory: {{.Values.POD_REQUEST_MEM }}
         ports:
-        - containerPort: ${CONTAINER_PORT}
+        - containerPort: {{ .Values.CONTAINER_PORT }}
         env:
           - name: VAULT_HOST
-            value: "${VAULT_HOST}"
+            value: "{{ .Values.VAULT_HOST}}"
           - name: VAULT_PORT
-            value: "${VAULT_PORT}"
+            value: "{{.Values.VAULT_PORT}}"
           - name: VAULT_ROLE_ID
-            value: "${VAULT_ROLE_ID}"
+            value: "{{.Values.VAULT_ROLE_ID}}"
           - name: VAULT_SECRET_ID
-            value: "${VAULT_SECRET_ID}"
+            value: "{{.Values.VAULT_SECRET_ID}}"
           - name: ENV
-            value: "${CI_ENVIRONMENT_NAME}"
+            value: "{{ .Values.CI_ENVIRONMENT_NAME }}"
           - name: VAULT_PATH
             value: cm_v5
           - name: CONFIG_SOURCE
-            value: /home/${DOCKER_IMAGE_NAME}/config/common.config
+            value: /home/{{ .Values.DOCKER_IMAGE_NAME }}/config/common.config
           - name: CONFIG_DESTINATION
-            value: /home/${DOCKER_IMAGE_NAME}/config/common.config
+            value: /home/{{ .Values.DOCKER_IMAGE_NAME }}/config/common.config
       imagePullSecrets:
       - name: registry
       restartPolicy: Always

@@ -1,11 +1,11 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: ${DOCKER_IMAGE_NAME}
-  namespace: ott-${CI_ENVIRONMENT_NAME}
+  name: {{.Values.DOCKER_IMAGE_NAME}}
+  namespace: ott-{{.Values.CI_ENVIRONMENT_NAME}}
 spec:
   ports:
-  - port: ${CONTAINER_PORT}
+  - port: {{.Values.CONTAINER_PORT}}
     protocol: TCP
   selector:
-    run: ${DOCKER_IMAGE_NAME}
+    run: {{.Values.DOCKER_IMAGE_NAME}}
