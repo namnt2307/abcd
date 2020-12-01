@@ -210,7 +210,7 @@ variables:
     - *helm-routes
     - *values
     - echo ${KUBE_CONFIG} | base64 -d > /tmp/config
-    - helm install testchart /tmp/cmv5/ --debug --kubeconfig=/tmp/config --kube-apiserver ${K8S_CLUSTER} --namespace=ott-${CI_ENVIRONMENT_NAME}
+    - helm lint testchart /tmp/cmv5/ --debug --kubeconfig=/tmp/config --kube-apiserver ${K8S_CLUSTER} --namespace=ott-${CI_ENVIRONMENT_NAME}
 
 deploy:development:
   extends: .deploy
