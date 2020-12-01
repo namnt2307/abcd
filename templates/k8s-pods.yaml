@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ .Values.DOCKER_IMAGE_NAME}}
-  namespace: ott-{{ .Values.CI_ENVIRONMENT_NAME }}
+  namespace: ott-{{ .Values.CI_ENVIRONMENT_NAME }}-h
 spec:
   selector:
     matchLabels:
