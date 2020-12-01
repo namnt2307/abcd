@@ -1,7 +1,7 @@
 apiVersion: traefik.containo.us/v1alpha1
 kind: IngressRoute
 metadata:
-  name: {{.Values.DOCKER_IMAGE_NAME}}
+  name: {{.Values.DOCKER_IMAGE_NAME }}
   namespace: ott-{{.Values.CI_ENVIRONMENT_NAME}}-h
 spec:
   entryPoints:
